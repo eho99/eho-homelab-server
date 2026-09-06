@@ -1,0 +1,23 @@
+services:
+  actual-server:
+    image: actualbudget/actual-server:latest
+    container_name: actual-server
+    ports:
+      - "5006:5006"
+    volumes:
+      - ./actual-data:/data
+    restart: unless-stopped
+
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    ports:
+      - "13378:80"
+    volumes:
+      - ./audiobookshelf/audiobooks:/audiobooks
+      - ./audiobookshelf/podcasts:/podcasts
+      - ./audiobookshelf/config:/config
+      - ./audiobookshelf/metadata:/metadata
+    environment:
+      - TZ=America/Los_Angeles
+    restart: unless-stopped
