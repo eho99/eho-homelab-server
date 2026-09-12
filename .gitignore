@@ -1,0 +1,21 @@
+# runtime data - do not commit
+actual-data/
+audiobookshelf/
+kavita/
+caddy/data/
+caddy/config/
+homepage/config/logs/
+
+# private keys
+*.key
+caddy/certs/*.csr
+
+# databases / caches
+*.sqlite*
+*.db-shm
+*.db-wal
+*.db
+*.blob
+
+# logs
+*.log

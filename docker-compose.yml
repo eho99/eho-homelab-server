@@ -21,3 +21,30 @@ services:
     environment:
       - TZ=America/Los_Angeles
     restart: unless-stopped
+
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./homepage/config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - HOMEPAGE_ALLOWED_HOSTS=*
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    ports:
+      - "443:443"
+      - "444:444"
+      - "8444:8444"
+      - "8000:8000"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy/certs:/certs:ro
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+    restart: unless-stopped

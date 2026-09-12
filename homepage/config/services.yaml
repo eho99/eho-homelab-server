@@ -1,0 +1,10 @@
+---
+- Homelab:
+    - Actual Budget:
+        icon: actual-budget
+        href: http://localhost:5006
+        description: Budget / finance manager
+    - Audiobookshelf:
+        icon: audiobookshelf
+        href: http://localhost:13378
+        description: Audiobooks, podcasts & ebooks

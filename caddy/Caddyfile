@@ -1,0 +1,19 @@
+:443 {
+	tls /certs/server.crt /certs/server.key
+	reverse_proxy homepage:3000
+}
+
+:444 {
+	tls /certs/server.crt /certs/server.key
+	reverse_proxy actual-server:5006
+}
+
+:8444 {
+	tls /certs/server.crt /certs/server.key
+	reverse_proxy audiobookshelf:80
+}
+
+:8000 {
+	root * /certs
+	file_server
+}
