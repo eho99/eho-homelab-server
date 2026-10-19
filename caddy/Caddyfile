@@ -1,19 +1,31 @@
-:443 {
-	tls /certs/server.crt /certs/server.key
+# Caddy is a plain-HTTP reverse proxy only. It does NOT terminate TLS.
+#
+# HTTPS for the *.ts.net names is terminated by Tailscale Serve, which holds a
+# real Let's Encrypt certificate and forwards to the loopback ports below.
+# Those forwards never leave the machine, so no certificate is needed here.
+#
+# This matters: a private IP can never get a publicly-trusted certificate, so
+# there is no way to serve trustworthy HTTPS from these ports directly. Moving
+# TLS out to Tailscale also removes the per-host self-signed certificate that
+# used to have to be regenerated on every fresh clone.
+
+:8080 {
 	reverse_proxy homepage:3000
 }
 
-:444 {
-	tls /certs/server.crt /certs/server.key
+:8081 {
 	reverse_proxy actual-server:5006
 }
 
-:8444 {
-	tls /certs/server.crt /certs/server.key
+:8082 {
 	reverse_proxy audiobookshelf:80
 }
 
-:8000 {
-	root * /certs
-	file_server
+# Plaid re-authentication page. This is the ONLY web surface of the sync
+# worker and it can initiate a bank login, so it is protected by HTTP basic
+# auth (WEB_USERNAME / WEB_PASSWORD) in addition to this listener. Its port is
+# published on loopback only and is deliberately absent from the LAN listeners
+# in docker-compose.yml, so it is unreachable off-tailnet.
+:8083 {
+	reverse_proxy plaid-sync:8090
 }

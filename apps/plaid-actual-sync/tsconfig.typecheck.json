@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    // The e2e specs execute browser code, so the DOM lib is required here even
+    // though the application source itself never touches a DOM.
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "e2e/**/*.ts", "playwright.config.ts", "types/**/*.d.ts"]
+}

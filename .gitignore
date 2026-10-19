@@ -8,7 +8,21 @@ homepage/config/logs/
 
 # private keys
 *.key
-caddy/certs/*.csr
+# Caddy no longer terminates TLS -- Tailscale Serve owns HTTPS for the
+# *.ts.net names -- so there is no longer any per-host certificate material to
+# generate or ignore here.
+
+# plaid-actual-sync
+# The .env holds Plaid + Actual credentials; state.json holds durable Plaid
+# access tokens, which never expire and grant full read access to the linked
+# bank account. Neither may ever be committed.
+apps/plaid-actual-sync/.env
+# Editor/backup copies of the same secrets.
+apps/plaid-actual-sync/.env.*
+!apps/plaid-actual-sync/.env.example
+apps/plaid-actual-sync/node_modules/
+apps/plaid-actual-sync/dist/
+plaid-sync/
 
 # databases / caches
 *.sqlite*

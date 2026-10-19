@@ -8,6 +8,72 @@ services:
       - ./actual-data:/data
     restart: unless-stopped
 
+  # Syncs Plaid transactions into Actual on a schedule.
+  # This is a background worker, not a web service: it has no port and no
+  # Caddy route. See apps/plaid-actual-sync/README.md before first use.
+  plaid-sync:
+    build:
+      context: ./apps/plaid-actual-sync
+      target: runtime
+    container_name: plaid-sync
+    env_file:
+      - ./apps/plaid-actual-sync/.env
+    volumes:
+      # Persistent: holds the Plaid access tokens and the sync cursor.
+      # Deleting this forces a full re-link and re-sync.
+      - ./plaid-sync/data:/data
+    # Reached by caddy on the bridge network (dashboard), and by Tailscale
+    # Funnel on the host's loopback (webhook only).
+    expose:
+      - "8090"
+    ports:
+      # Published on 127.0.0.1 ONLY. Tailscale Funnel forwards to
+      # localhost:<port> on the machine running tailscaled, so the webhook
+      # port must be reachable there — but binding to loopback keeps it off
+      # the LAN and off every other host on the tailnet.
+      - "127.0.0.1:8091:8091"
+    depends_on:
+      - actual-server
+    restart: unless-stopped
+
+  # End-to-end tests against Plaid's sandbox. Not started by default.
+  #   docker compose --profile e2e run --rm plaid-sync-e2e
+  #
+  # This runs its OWN instance of the app alongside Playwright, deliberately
+  # isolated from the `plaid-sync` service. Both a separate data volume and a
+  # separate process: pointing the tests at the production worker would link
+  # sandbox institutions into your real budget and share a state file.
+  plaid-sync-e2e:
+    build:
+      context: ./apps/plaid-actual-sync
+      target: e2e
+    profiles: ["e2e"]
+    env_file:
+      - ./apps/plaid-actual-sync/.env
+    volumes:
+      - ./plaid-sync/e2e-data:/data
+    depends_on:
+      - actual-server
+    environment:
+      # Tests drive the app in this same container over loopback.
+      E2E_APP_URL: http://127.0.0.1:8090
+      DATA_DIR: /data
+      # Do not auto-sync on boot; the suite triggers syncs explicitly.
+      ENABLED: "false"
+      # WEB_USERNAME/WEB_PASSWORD are deliberately left empty here, which makes
+      # this container's HTTP API unprotected. That is acceptable ONLY because
+      # it is ephemeral, sandbox-only, and never published to a host port. Do
+      # not copy this pattern into the plaid-sync service, which must stay
+      # behind basic auth.
+    # The e2e image's entrypoint is `npx playwright test`, but the suite needs
+    # the app's HTTP API running first, so it is started in the same container.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        node dist/index.js --with-server &
+        until node -e "fetch('http://127.0.0.1:8090/api/items').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; do sleep 1; done;
+        exec npx playwright test
+
   audiobookshelf:
     image: ghcr.io/advplyr/audiobookshelf:latest
     container_name: audiobookshelf
@@ -38,13 +104,25 @@ services:
     image: caddy:latest
     container_name: caddy
     ports:
-      - "443:443"
-      - "444:444"
-      - "8444:8444"
-      - "8000:8000"
+      # Tailnet entry points. Tailscale Serve terminates TLS on 443/444/8444/
+      # 9444 and forwards to these over loopback. They are bound to 127.0.0.1
+      # so they are unreachable from the LAN, and so the host ports Serve needs
+      # are free. `docker compose` must be running for these to answer.
+      - "127.0.0.1:8080:8080"   # homepage
+      - "127.0.0.1:8081:8081"   # actual-server
+      - "127.0.0.1:8082:8082"   # audiobookshelf
+      - "127.0.0.1:8083:8083"   # plaid-sync
+      # LAN access, plaintext. No trusted certificate can exist for a private
+      # IP, so these are deliberately cleartext -- use the tailnet URL when you
+      # want HTTPS. plaid-sync is absent on purpose: it can initiate a bank
+      # login and must not be reachable from off-tailnet.
+      - "0.0.0.0:9090:8080"     # homepage
+      - "0.0.0.0:9091:8081"     # actual-server
+      - "0.0.0.0:9092:8082"     # audiobookshelf
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
-      - ./caddy/certs:/certs:ro
       - ./caddy/data:/data
       - ./caddy/config:/config
+    depends_on:
+      - plaid-sync
     restart: unless-stopped

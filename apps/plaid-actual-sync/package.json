@@ -1,0 +1,32 @@
+{
+  "name": "plaid-actual-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Syncs Plaid transactions into Actual Budget on a schedule.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
+    "link": "tsx src/link.ts",
+    "sync:once": "tsx src/index.ts --once",
+    "serve": "tsx src/index.ts --with-server",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@actual-app/api": "^26.10.0",
+    "express": "^4.22.3",
+    "plaid": "^48.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
