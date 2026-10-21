@@ -23,8 +23,36 @@ import { syncInvestments } from "./investments.js";
 import type { ActualClient, ActualTransactionInput } from "./actual.js";
 import type { StateStore, ItemState } from "./state.js";
 
+/**
+ * Humanises Plaid personal finance category names (e.g. FOOD_AND_DRINK -> Food & Drink).
+ */
+export function formatCategoryName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .split("_")
+    .map((word) => {
+      if (word === "and") return "&";
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(" ");
+}
+
+/**
+ * Extracts a candidate category name from Plaid transaction data.
+ * Prefers the modern `personal_finance_category.primary`, falling back to legacy `category[0]`.
+ */
+export function extractCategoryName(txn: Transaction): string | undefined {
+  if (txn.personal_finance_category?.primary) {
+    return formatCategoryName(txn.personal_finance_category.primary);
+  }
+  if (txn.category && txn.category.length > 0) {
+    return txn.category[0];
+  }
+  return undefined;
+}
+
 /** A Plaid transaction converted into Actual's import format. */
-function convertTransaction(txn: Transaction): ActualTransactionInput {
+function convertTransaction(txn: Transaction, categoryId?: string): ActualTransactionInput {
   // Plaid: positive = money leaving the account.
   // Actual: negative = spending.
   // Failing to negate here turns every expense into income.
@@ -42,6 +70,7 @@ function convertTransaction(txn: Transaction): ActualTransactionInput {
     // The bank's own name for the transaction, preserved so the budget shows
     // what the bank said rather than only our normalised payee.
     imported_payee: txn.name,
+    category: categoryId,
     notes: notesParts.join(" ") || undefined,
     // Anything sourced from a bank feed is, by definition, already posted to
     // the bank statement, so it reconciles cleanly.
@@ -340,8 +369,21 @@ async function syncItem(
       log.warn("%s: no Actual account for Plaid account %s; skipping %s", label, txn.account_id, txn.transaction_id);
       continue;
     }
+
+    let categoryId: string | undefined;
+    if (config.sync.autoCategorize) {
+      const categoryName = extractCategoryName(txn);
+      if (categoryName) {
+        try {
+          categoryId = await actual.ensureCategory(categoryName, config.sync.categoryGroupName);
+        } catch (catErr) {
+          log.warn("%s: failed to resolve category \"%s\": %s", label, categoryName, (catErr as Error).message);
+        }
+      }
+    }
+
     const list = grouped.get(target) ?? [];
-    list.push(convertTransaction(txn));
+    list.push(convertTransaction(txn, categoryId));
     grouped.set(target, list);
   }
 

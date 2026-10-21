@@ -43,6 +43,7 @@ export interface ActualTransactionInput {
   amount: number;
   payee_name?: string;
   imported_payee?: string;
+  category?: string;
   notes?: string;
   cleared?: boolean;
   imported_id?: string;
@@ -118,6 +119,9 @@ export class ActualClient {
     }
   }
 
+  private categoryCache = new Map<string, string>();
+  private categoryGroupId?: string;
+
   async getAccounts(): Promise<ActualAccount[]> {
     const accounts = (await actualApi.getAccounts()) as unknown as ActualAccount[];
     return accounts.filter((a) => !a.name.startsWith("Deleted account"));
@@ -127,6 +131,62 @@ export class ActualClient {
     const id = await actualApi.createAccount({ name, offbudget: false });
     log.info("Created Actual account %s (%s)", name, id);
     return id;
+  }
+
+  /**
+   * Resolves an Actual category ID for a given category name.
+   *
+   * 1. Checks memory cache.
+   * 2. Checks all existing categories in Actual (case-insensitive match).
+   * 3. If missing, ensures target category group exists, then creates the category.
+   */
+  async ensureCategory(categoryName: string, groupName = "Plaid"): Promise<string> {
+    const normalizedKey = categoryName.trim().toLowerCase();
+    const cached = this.categoryCache.get(normalizedKey);
+    if (cached) return cached;
+
+    const existingCategories = (await actualApi.getCategories()) as Array<{
+      id: string;
+      name: string;
+      is_income?: boolean;
+    }>;
+
+    const matched = existingCategories.find(
+      (c) => c.name.trim().toLowerCase() === normalizedKey && !c.is_income,
+    );
+    if (matched) {
+      this.categoryCache.set(normalizedKey, matched.id);
+      return matched.id;
+    }
+
+    // Ensure group exists
+    let groupId = this.categoryGroupId;
+    if (!groupId) {
+      const groups = (await actualApi.getCategoryGroups()) as Array<{
+        id: string;
+        name: string;
+        is_income?: boolean;
+      }>;
+      const groupMatch = groups.find(
+        (g) => g.name.trim().toLowerCase() === groupName.trim().toLowerCase() && !g.is_income,
+      );
+      if (groupMatch) {
+        groupId = groupMatch.id;
+      } else {
+        groupId = await actualApi.createCategoryGroup({ name: groupName });
+        log.info("Created Actual category group \"%s\" (%s)", groupName, groupId);
+      }
+      this.categoryGroupId = groupId;
+    }
+
+    const createdId = await actualApi.createCategory({
+      name: categoryName,
+      group_id: groupId,
+    });
+    log.info("Created Actual category \"%s\" in group \"%s\" (%s)", categoryName, groupName, createdId);
+
+    this.categoryCache.set(normalizedKey, createdId);
+    return createdId;
   }
 
   /**
@@ -154,6 +214,7 @@ export class ActualClient {
       amount: actualApi.utils.amountToInteger(t.amount),
       payee_name: t.payee_name,
       imported_payee: t.imported_payee,
+      category: t.category,
       notes: t.notes,
       cleared: t.cleared,
       imported_id: t.imported_id,

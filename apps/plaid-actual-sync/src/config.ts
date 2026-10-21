@@ -19,6 +19,8 @@ export interface Config {
     investmentWindowDays: number;
     deleteRemoved: boolean;
     enabled: boolean;
+    autoCategorize: boolean;
+    categoryGroupName: string;
   };
   dataDir: string;
   /**
@@ -169,6 +171,8 @@ export function loadConfig(): Config {
       investmentWindowDays: positiveInt("INVESTMENT_WINDOW_DAYS", 30),
       deleteRemoved: boolean("DELETE_REMOVED_TRANSACTIONS", true),
       enabled: boolean("ENABLED", true),
+      autoCategorize: boolean("AUTO_CATEGORIZE", true),
+      categoryGroupName: optional("CATEGORY_GROUP_NAME") ?? "Plaid",
     },
     dataDir: optional("DATA_DIR") ?? "/data",
     // Must match the Caddy route for this service (see caddy/Caddyfile).
