@@ -44,12 +44,6 @@ scp apps/plaid-actual-sync/.env "$SSH_HOST:$REMOTE_DIR/apps/plaid-actual-sync/.e
 # Adjust PUBLIC_URL on WSL if it still points to the macbook
 ssh "$SSH_HOST" "sed -i 's|erics-macbook-air\.tail74237a\.ts\.net|${REMOTE_NODE_DOMAIN}|g' '$REMOTE_DIR/apps/plaid-actual-sync/.env'"
 
-# Optionally copy current linked bank state so accounts stay linked
-if [[ -f plaid-sync/data/state.json ]]; then
-  echo "==> Copying existing linked bank state to WSL..."
-  scp plaid-sync/data/state.json "$SSH_HOST:$REMOTE_DIR/plaid-sync/data/state.json"
-fi
-
 echo "==> 4. Pulling latest code and building containers on WSL..."
 ssh -t "$SSH_HOST" "bash -l -c '
   cd \"$REMOTE_DIR\"

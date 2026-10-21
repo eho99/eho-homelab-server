@@ -269,6 +269,46 @@ export class ActualClient {
     log.info("Deleted Actual transaction %s", transactionId);
   }
 
+  async updateTransaction(
+    transactionId: string,
+    fields: Partial<ActualTransactionInput>,
+  ): Promise<void> {
+    const payload: Record<string, unknown> = {};
+    if (fields.amount !== undefined) {
+      payload.amount = actualApi.utils.amountToInteger(fields.amount);
+    }
+    if (fields.date !== undefined) payload.date = fields.date;
+    if (fields.payee_name !== undefined) payload.payee_name = fields.payee_name;
+    if (fields.notes !== undefined) payload.notes = fields.notes;
+    if (fields.cleared !== undefined) payload.cleared = fields.cleared;
+
+    await actualApi.updateTransaction(transactionId, payload);
+    log.info("Updated Actual transaction %s", transactionId);
+  }
+
+  /**
+   * Returns all transactions in an account, converting amounts to decimal.
+   */
+  async getAllTransactions(
+    accountId: string,
+    searchFrom = defaultSearchStart(),
+  ): Promise<Array<{ id: string; importedId?: string; amount: number; date: string }>> {
+    const transactions = await actualApi.getTransactions(accountId, searchFrom, futureDate());
+    return (
+      transactions as unknown as Array<{
+        id: string;
+        amount: number;
+        imported_id: string | null;
+        date: string;
+      }>
+    ).map((t) => ({
+      id: t.id,
+      importedId: t.imported_id ?? undefined,
+      amount: actualApi.utils.integerToAmount(t.amount),
+      date: t.date,
+    }));
+  }
+
   /** Current computed balance, in decimal units (e.g. -1234.56). */
   async getAccountBalance(accountId: string): Promise<number> {
     const cents = await actualApi.getAccountBalance(accountId);

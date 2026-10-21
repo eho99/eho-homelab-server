@@ -152,8 +152,8 @@ export async function syncInvestments(
 }
 
 /**
- * Makes one Actual account's computed balance equal `target` by rewriting a
- * single adjustment transaction. Returns true if an adjustment was posted.
+ * Makes one Actual account's computed balance equal `target` by rewriting or
+ * updating a single adjustment transaction. Returns true if an adjustment was posted/updated.
  */
 async function reconcileAccountBalance(
   actual: ActualClient,
@@ -161,52 +161,72 @@ async function reconcileAccountBalance(
   target: number,
   label: string,
 ): Promise<boolean> {
-  // 1. Remove the previous adjustment so we recompute from scratch. Without
-  //    this, each cycle would add another adjustment on top of the last.
-  const stale = await findAdjustments(actual, actualAccountId);
-  for (const id of stale) {
-    await actual.deleteTransaction(id);
+  const allTxns = await actual.getAllTransactions(actualAccountId);
+
+  let baseBalance = 0;
+  let existingAdjustment: { id: string; amount: number } | undefined;
+
+  for (const t of allTxns) {
+    if (t.importedId && t.importedId.startsWith(ADJUSTMENT_PREFIX)) {
+      if (!existingAdjustment) {
+        existingAdjustment = { id: t.id, amount: t.amount };
+      } else {
+        // Redundant extra adjustments if any existed in the past
+        await actual.deleteTransaction(t.id);
+      }
+    } else {
+      baseBalance += t.amount;
+    }
   }
 
-  // 2. What the account sums to once real transactions are in and the old
-  //    adjustment is gone.
-  const current = await actual.getAccountBalance(actualAccountId);
+  // Rounding to 2 decimal places to avoid floating-point drift
+  const neededAdjustment = Math.round((target - baseBalance) * 100) / 100;
 
-  // 3. Post a single adjustment closing the gap. Below a cent this is
-  //    floating-point noise, not a real discrepancy.
-  const delta = target - current;
-  if (Math.abs(delta) < 0.01) return false;
+  if (existingAdjustment) {
+    const diff = Math.abs(existingAdjustment.amount - neededAdjustment);
+    if (diff < 0.01) {
+      return false; // Already matches perfectly
+    }
+
+    log.info(
+      "%s: updating investment adjustment in account %s (old: %.2f -> new: %.2f) to reach target %.2f",
+      label,
+      actualAccountId,
+      existingAdjustment.amount,
+      neededAdjustment,
+      target,
+    );
+
+    await actual.updateTransaction(existingAdjustment.id, {
+      amount: neededAdjustment,
+      date: ymd(new Date()),
+    });
+    return true;
+  }
+
+  // If no adjustment exists yet and neededAdjustment is not 0
+  if (Math.abs(neededAdjustment) < 0.01) {
+    return false;
+  }
 
   log.info(
-    "%s: adjusting investment account %s by %.2f (Actual %.2f -> Plaid %.2f)",
+    "%s: creating initial investment adjustment in account %s of %.2f to reach target %.2f",
     label,
     actualAccountId,
-    delta,
-    current,
+    neededAdjustment,
     target,
   );
 
   await actual.importTransactions(actualAccountId, [
     {
       date: ymd(new Date()),
-      amount: delta,
+      amount: neededAdjustment,
       payee_name: "Investment balance adjustment",
-      // Dated, not constant, so a same-day re-run replaces rather than
-      // duplicates: the previous one was already deleted above.
-      imported_id: `${ADJUSTMENT_PREFIX}${actualAccountId}:${ymd(new Date())}`,
+      imported_id: `${ADJUSTMENT_PREFIX}${actualAccountId}`,
       cleared: true,
       notes: "Auto-generated to match the brokerage balance reported by Plaid.",
     },
   ]);
 
   return true;
-}
-
-/** Deletes and returns the ids of any existing adjustment transactions. */
-async function findAdjustments(actual: ActualClient, accountId: string): Promise<string[]> {
-  const stalePrefix = `${ADJUSTMENT_PREFIX}${accountId}:`;
-  const existing = await actual.getTransactionsWithImportedIds(accountId);
-  return existing
-    .filter((t) => t.importedId.startsWith(stalePrefix))
-    .map((t) => t.id);
 }
