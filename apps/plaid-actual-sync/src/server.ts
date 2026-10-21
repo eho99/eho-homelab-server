@@ -256,6 +256,7 @@ export function createApp(config: Config, coordinator?: SyncCoordinator): expres
   app.get("/api/items", async (_req, res) => {
     await store.load();
     const items = store.listLinkedItems();
+    const { lastSyncAt, lastSyncResult } = store.getLastSync();
 
     const payload = await Promise.all(
       items.map(async ([itemKey, item]) => {
@@ -290,7 +291,11 @@ export function createApp(config: Config, coordinator?: SyncCoordinator): expres
       }),
     );
 
-    res.json(payload);
+    res.json({
+      items: payload,
+      lastSyncAt: lastSyncAt ?? null,
+      lastSyncResult: lastSyncResult ?? null,
+    });
   });
 
   // ---- Link a NEW institution (no update mode) --------------------------
@@ -680,6 +685,11 @@ function renderStatusPage(opts: PageOptions): string {
   </div>`
   }
 
+  <h2>Last sync</h2>
+  <div class="card" id="last-sync-card">
+    <div id="last-sync-content" class="muted">Loading…</div>
+  </div>
+
   <h2>Connected accounts</h2>
   <div id="items">Loading…</div>
 
@@ -837,6 +847,7 @@ async function runSync(button) {
     const body = await res.json();
     if (!res.ok) throw new Error(body.error || res.statusText);
     setBanner('Synced: ' + body.imported + ' imported, ' + body.skippedDuplicates + ' skipped.');
+    await load();
   } catch (err) {
     alert('Sync failed: ' + err.message);
   } finally {
@@ -848,8 +859,33 @@ async function runSync(button) {
 async function load() {
   const res = await fetch('/api/items');
   if (res.status === 401) { showLogin(); return; }
-  const items = await res.json();
+  const data = await res.json();
+  const items = Array.isArray(data) ? data : (data.items || []);
+  const lastSyncAt = Array.isArray(data) ? null : data.lastSyncAt;
+  const lastSyncResult = Array.isArray(data) ? null : data.lastSyncResult;
+
+  const lastSyncEl = document.getElementById('last-sync-content');
+  if (lastSyncEl) {
+    if (lastSyncAt) {
+      const dateStr = new Date(lastSyncAt).toLocaleString();
+      let summaryStr = '';
+      if (lastSyncResult) {
+        summaryStr = '<div class="muted" style="margin-top: .25rem; font-size: .9rem;">' +
+          'Imported: <strong>' + (lastSyncResult.imported || 0) + '</strong>, ' +
+          'Skipped: <strong>' + (lastSyncResult.skippedDuplicates || 0) + '</strong>' +
+          (lastSyncResult.failures && lastSyncResult.failures.length
+            ? ' <span class="bad">(' + lastSyncResult.failures.length + ' failure(s))</span>'
+            : '') +
+          '</div>';
+      }
+      lastSyncEl.innerHTML = '<div><span class="ok">✓ Last synced</span> <strong>' + esc(dateStr) + '</strong></div>' + summaryStr;
+    } else {
+      lastSyncEl.innerHTML = '<span class="muted">No sync recorded yet.</span>';
+    }
+  }
+
   const box = document.getElementById('items');
+  box.innerHTML = '';
   if (!items.length) {
     box.innerHTML = '<p class="muted">No accounts connected yet. Use “Connect account”.</p>';
     return;

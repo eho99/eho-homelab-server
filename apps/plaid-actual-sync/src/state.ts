@@ -50,6 +50,14 @@ export interface ItemState {
 export interface State {
   version: number;
   items: Record<string, ItemState>;
+  /** ISO timestamp of the last completed sync run */
+  lastSyncAt?: string;
+  /** Summary of the last completed sync run */
+  lastSyncResult?: {
+    imported: number;
+    skippedDuplicates: number;
+    failures: string[];
+  };
 }
 
 /**
@@ -216,6 +224,18 @@ export class StateStore {
 
   setCursor(itemId: string, cursor: string): void {
     this.getItem(itemId).cursor = cursor;
+  }
+
+  getLastSync(): { lastSyncAt?: string; lastSyncResult?: State["lastSyncResult"] } {
+    return {
+      lastSyncAt: this.state.lastSyncAt,
+      lastSyncResult: this.state.lastSyncResult,
+    };
+  }
+
+  setLastSync(result: { imported: number; skippedDuplicates: number; failures: string[] }): void {
+    this.state.lastSyncAt = new Date().toISOString();
+    this.state.lastSyncResult = result;
   }
 
   private pruneSeen(): void {

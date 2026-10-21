@@ -256,7 +256,11 @@ export async function runSync(
     log.warn("%d item(s) failed this run: %s", failures.length, failures.join(", "));
   }
 
-  return { imported: totalImported, skippedDuplicates: totalSkipped, failures };
+  const summary = { imported: totalImported, skippedDuplicates: totalSkipped, failures };
+  store.setLastSync(summary);
+  await store.save();
+
+  return summary;
 }
 
 async function syncItem(
